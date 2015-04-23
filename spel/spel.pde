@@ -26,6 +26,9 @@ import org.geonames.*;
 import java.net.*;
 import codeanticode.glgraphics.*;
 
+DefaultHttpClient httpClient;
+
+
 //GLOBALE VARIABELEN
 
 //create a reference to a "Map" object
@@ -50,10 +53,25 @@ Location handLoc;
 
 
 PVector fingerPos;
-float xfinger;
-float yfinger;
-
 PVector handPos;
+
+//HUE
+String KEY = "fredericgryspeerdt"; // "secret" key/token
+String IP = "172.23.190.22"; // ip bridge
+
+int hue = 0;	//rood = 0 of 65280 / groen = 25500 tot 36210 / blauw = 46920
+int brightness = 0;	//van 0 tot 255
+int saturation = 0;
+
+//LOGICA
+Location searchLoc = new Location(50.835925, 4.350409);	//locatie die gezocht moet worden
+SimplePointMarker searchMark = new SimplePointMarker(searchLoc);
+
+Location cursorLoc;	//locatie van de cursor
+int distance;	//afstand tussen gezochte locatie en locatie van "cursor"
+
+//GAME
+int gameState = 1; //0 = INTRO - 1 = STARTED - 3 = STOPPED
 
 void setup() {
 	//Venster aanmaken
@@ -68,44 +86,114 @@ void setup() {
 	setupGeoNamesWebService();
 
 	//INIT LEAPMOTION
-  setupLeapMotion();
+  	setupLeapMotion();
+
+  	//HttpCLient
+  	httpClient = new DefaultHttpClient();
 
 	//logger: will setup basic logging to the console
 	org.apache.log4j.BasicConfigurator.configure();
 }
 
 void draw() {
-	
-	myMap.draw();
-	
-	//get the Location of the map at the current mouse position, and show its latitude and longitude as black text.
-	//Location location = myMap.getLocation(mouseX, mouseY);
-	//text(location.getLat() + ", " + location.getLon(), mouseX, mouseY);
-	
-	//weergeven van alle markers (plaatsen waar geklikt is)
-	addMarkers(lstMarkers);
 
-	try {
-      //text(mouseX + ", " + mouseY,mouseX,mouseY);
-      fingerPos = leap.getTip(leap.getFinger(0));    
-    } catch (Exception e) {
-      println("> fingerposition: "+e);
-    }
-    
-    try {
-       for (Hand hand : leap.getHandList()) {
-        handPos = leap.getPosition(hand);
-        ellipse(handPos.x, handPos.y, 20, 20);
-        fill(255);
-        ellipse(handPos.x, handPos.y, 20, 20);
+	switch (gameState) {
+		case 0 : //INTRO
+			background(0);
+		break;	
 
-        checkPanning(handPos);
-        handLoc = new Location(handPos.x, handPos.y);
-      }
-    } catch (Exception e) {
-      println("> handPos: "+e);
-    }
+		case 1 : //STARTED
+				myMap.draw();
+	
+				//get the Location of the map at the current mouse position, and show its latitude and longitude as black text.
+				//Location location = myMap.getLocation(mouseX, mouseY);
+				//text(location.getLat() + ", " + location.getLon(), mouseX, mouseY);
+				
+				//weergeven van alle markers (plaatsen waar geklikt is)
+				addMarkers(lstMarkers);
+
+				try {
+			      //text(mouseX + ", " + mouseY,mouseX,mouseY);
+			      fingerPos = leap.getTip(leap.getFinger(0));    
+			    } catch (Exception e) {
+			      println("> fingerposition: "+e);
+			    }
+			    
+			    try {
+			       for (Hand hand : leap.getHandList()) {
+			        handPos = leap.getPosition(hand);
+			        ellipse(handPos.x, handPos.y, 20, 20);
+			        fill(255);
+			        ellipse(handPos.x, handPos.y, 20, 20);
+
+			        checkPanning(handPos);
+			        handLoc = new Location(handPos.x, handPos.y);
+			      }
+			    } catch (Exception e) {
+			      println("> handPos: "+e);
+			    }
+
+
+			    //aanvulling
+			    try {
+			    	cursorLoc = myMap.getLocation(mouseX, mouseY);
+			    	distance = (int)searchLoc.getDistance(cursorLoc);
+			    	println(">> DISTANCE: " + distance);
+			    	//distanceToColorConverter();
+
+			    	checkDistance();
+			    	//hueTest();
+
+			    } catch (Exception e) {
+			    	println(">> DISTANCE: " + e);
+			    }
+					break;	
+				}
+	
+
 }
+
+void keyPressed() {
+  if (key == 's') {
+    gameState = 1;
+	}
+ }
+
+public void hueTest(){
+	try {
+    String data = "{\"on\":true, \"hue\":"+hue+", \"bri\":"+brightness+", \"sat\":"+saturation+", \"transitiontime\":5}";
+
+    StringEntity se = new StringEntity(data);
+    HttpPut httpPut = new HttpPut("http://"+IP+"/api/"+KEY+"/lights/3/state");
+
+    httpPut.setEntity(se);
+
+    HttpResponse response = httpClient.execute(httpPut);
+    HttpEntity entity = response.getEntity();
+    if (entity != null) entity.consumeContent();
+  }
+  catch(Exception e) {
+    e.printStackTrace();
+  }
+}
+
+public void checkDistance(){
+	//max hue = 65.280
+	//max brightness = 255
+	//max saturation = 255
+	//max distance = +-20.000
+
+	hue = (int)map(distance, 0, 20000, 0, 46920); // hoe dichter bij gezochte locatie, hoe rooder 
+	//println("hue: "+hue);
+	brightness = (int)map(distance, 0, 20000, 170, 0); //hoe dicht bij gezochte locatie, hoe meer helder
+	//println("brightness: "+brightness);
+	saturation = (int)map(distance, 0, 20000, 255, 0); // hoe dichter bij gezochte locatie, hoe meer saturation
+	//println("saturation;: "+saturation);
+}
+
+
+
+
 
 public void checkPanning(PVector handPosition){
 
@@ -183,7 +271,7 @@ public void setupMyMap(){
   									//range: 0 is max. uitgezoomd, 18 (of meer indien mogelijk) is max. uitgezoomd
 
 
-
+  	myMap.addMarker(searchMark);								
 }
 
 public void setupGeoNamesWebService(){
@@ -361,4 +449,6 @@ public void circleGestureRecognized(CircleGesture gesture, String clockwiseness)
 
 public void stop() {
   leap.stop();
+  httpClient.getConnectionManager().shutdown();
+  super.stop();
 }	
